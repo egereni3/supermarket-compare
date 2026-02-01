@@ -1,0 +1,31 @@
+<div class="account-grid">
+  <div class="left-column">
+    <div class="avatar-placeholder" aria-hidden="true"></div>
+
+    <section class="profile-section">
+      <h3>Profile</h3>
+      <strong>Email:</strong> {{ currentEmail }}
+
+
+
+    </section>
+  </div>
+
+  <div class="right-column">
+    <h2>Your basket</h2>
+    <div *ngIf="(items$ | async) as items">
+      <p *ngIf="!items.length">Your basket is empty.</p>
+
+      <ul *ngIf="items.length">
+        <li *ngFor="let item of items">
+          <span>{{ item.title }}</span>
+          <span>£{{ item.unitPrice.toFixed(2) }}</span>
+          <span>{{ item.market }}</span>
+          <button (click)="remove(item.id)">Remove</button>
+        </li>
+      </ul>
+
+      <button *ngIf="items.length" (click)="clear()">Clear basket</button>
+    </div>
+  </div>
+</div>

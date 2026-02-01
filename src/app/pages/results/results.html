@@ -1,0 +1,44 @@
+<h2>Results for "{{ query }}"</h2>
+
+<p *ngIf="loading">Loading results...</p>
+<p *ngIf="!loading && results && !results.sainsburys.length && !results.homebargains.length && !results.morrisons.length">
+  No results found.
+</p>
+
+<div *ngIf="results">
+  <!-- Sainsburys -->
+  <div *ngIf="results.sainsburys.length" class="crawler">
+    <h3>Sainsburys</h3>
+    <ul>
+      <li *ngFor="let item of results.sainsburys; let i = index">
+        <span>{{ item[0] }}</span>
+        <span>{{ item[1] }}</span>
+        <button (click)="onAddClick(item, 'sainsburys', i)" [class.pulse]="isAnimating(item, 'sainsburys', i)">Add to basket</button>
+      </li>
+    </ul>
+  </div>
+
+  <!-- Home Bargains -->
+  <div *ngIf="results.homebargains.length" class="crawler">
+    <h3>Home Bargains</h3>
+    <ul>
+      <li *ngFor="let item of results.homebargains; let i = index">
+        <span>{{ item[0] }}</span>
+        <span>{{ item[1] }}</span>
+        <button (click)="onAddClick(item, 'homebargains', i)" [class.pulse]="isAnimating(item, 'homebargains', i)">Add to basket</button>
+      </li>
+    </ul>
+  </div>
+
+  <!-- Morrisons -->
+  <div *ngIf="results.morrisons.length" class="crawler">
+    <h3>Morrisons</h3>
+    <ul>
+      <li *ngFor="let item of results.morrisons; let i = index">
+        <span>{{ item[0] }}</span>
+        <span>{{ item[1] }}</span>
+        <button (click)="onAddClick(item, 'morrisons', i)" [class.pulse]="isAnimating(item, 'morrisons', i)">Add to basket</button>
+      </li>
+    </ul>
+  </div>
+</div>

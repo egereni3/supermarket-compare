@@ -1,0 +1,18 @@
+<h1>Supermarket Compare</h1>
+
+<form *ngIf="isLoggedIn" (ngSubmit)="onSearch()">
+  <input
+    type="text"
+    [(ngModel)]="query"
+    name="query"
+    placeholder="Search for products..."
+  />
+  <button type="submit" [disabled]="loading">Search</button>
+</form>
+
+<p *ngIf="!isLoggedIn">Please log in to search for products.</p>
+
+<span *ngIf="loading" class="loader"></span>
+<p *ngIf="loading"> Searching... This may take a few seconds.</p>
+
+<p *ngIf="error" class="error-message">{{ error }}</p>
