@@ -1,8 +1,9 @@
-import { Component } from '@angular/core';
+import { Component, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { Auth } from '../../auth/auth';
+import { finalize } from 'rxjs/operators';
 
 @Component({
   selector: 'app-login',
@@ -15,10 +16,13 @@ export class Login {
   email = '';
   password = '';
   error: string | null = null;
-  responseMessage: string | null = null;
   loading = false;
 
-  constructor(private auth: Auth, private router: Router) {}
+  constructor(
+    private auth: Auth,
+    private router: Router,
+    private cdr: ChangeDetectorRef
+  ) {}
 
   isValidEmail(email: string): boolean {
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}$/;
@@ -27,51 +31,62 @@ export class Login {
 
   onSubmit(): void {
     this.error = null;
-    this.responseMessage = null;
 
     if (!this.email.trim() || !this.password.trim()) {
       this.error = 'Email and password are required.';
+      this.cdr.detectChanges();
       return;
     }
 
     if (!this.isValidEmail(this.email)) {
       this.error = 'Please enter a valid email address.';
+      this.cdr.detectChanges();
       return;
     }
 
-    if (this.password.length < 6) {
-      this.error = 'Password must be at least 6 characters long, contain an uppercase letter, and a number.';
-      return;
-    }
-    if (!/[A-Z]/.test(this.password)) {
-      this.error = 'Password must contain at least one uppercase letter.';
-      return;
-    }
-    if (!/[0-9]/.test(this.password)) {
-      this.error = 'Password must contain at least one number.';
+    if (
+      this.password.length < 6 ||
+      !/[A-Z]/.test(this.password) ||
+      !/[0-9]/.test(this.password)
+    ) {
+      this.error =
+        'Password must be at least 6 characters long and include an uppercase letter and a number.';
+      this.cdr.detectChanges();
       return;
     }
 
     this.loading = true;
-    this.auth.login(this.email.trim(), this.password).subscribe({
-      next: (resp) => {
-        this.loading = false;
-        if (!resp.success) {
-          this.error = resp.error ?? 'Login failed.';
-          this.responseMessage = 'Login failed. Please check your credentials.';
-          return;
-        }
-        this.responseMessage = 'Login successful!';
-        this.router.navigate(['/account']);
-      },
-      error: (err: any) => {
-        this.loading = false;
-        const serverMsg =
-          (err && (err.error?.error || err.error?.message || err.message)) ??
-          'Server error. Please try again.';
-        this.error = serverMsg;
-        this.responseMessage = serverMsg;
-      },
-    });
+    this.cdr.detectChanges();
+
+    this.auth
+      .login(this.email.trim(), this.password)
+      .pipe(
+        finalize(() => {
+          this.loading = false;
+          this.cdr.detectChanges();
+        })
+      )
+      .subscribe({
+        next: (resp: any) => {
+          const body = resp?.body ?? resp;
+
+          if (!body?.success) {
+            this.error = body?.error || 'Invalid email or password.';
+            this.cdr.detectChanges(); 
+            return;
+          }
+
+          this.router.navigate(['/account']);
+        },
+
+        error: (err: any) => {
+          this.error =
+            err?.error?.error ||
+            err?.error?.message ||
+            err?.message ||
+            'Server error. Please try again.';
+          this.cdr.detectChanges(); 
+        },
+      });
   }
 }

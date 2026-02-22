@@ -1,44 +1,150 @@
 <h2>Results for "{{ query }}"</h2>
 
-<p *ngIf="loading">Loading results...</p>
-<p *ngIf="!loading && results && !results.sainsburys.length && !results.homebargains.length && !results.morrisons.length">
-  No results found.
-</p>
 
-<div *ngIf="results">
-  <!-- Sainsburys -->
-  <div *ngIf="results.sainsburys.length" class="crawler">
-    <h3>Sainsburys</h3>
-    <ul>
-      <li *ngFor="let item of results.sainsburys; let i = index">
-        <span>{{ item[0] }}</span>
-        <span>{{ item[1] }}</span>
-        <button (click)="onAddClick(item, 'sainsburys', i)" [class.pulse]="isAnimating(item, 'sainsburys', i)">Add to basket</button>
-      </li>
-    </ul>
+  <div class="page-layout">
+
+    <div class="main-content">
+      <div class="center">
+
+        <form *ngIf="isLoggedIn" (ngSubmit)="onSearch()">
+          <input
+            type="text"
+            [(ngModel)]="query"
+            name="query"
+            placeholder="Search for products..."
+          />
+          <button type="submit" [disabled]="loading">Search</button>
+        </form>
+
+        <span *ngIf="loading" class="loader"></span>
+      
+
+      <p *ngIf="loading"> Searching... This may take a few seconds.</p>
+
+      <p *ngIf="!loading && results && !results.sainsburys.length && !results.homebargains.length && !results.morrisons.length">
+        No results found.
+      </p>
+
+      <p *ngIf="error" class="error-message">{{ error }}</p>
+    </div>
+
+
+    <div *ngIf="results">
+      <!-- Sainsburys -->
+      <div *ngIf="results.sainsburys.length" class="crawler">
+        <h3>Sainsburys</h3>
+        <ul>
+          <li *ngFor="let item of results.sainsburys; let i = index">
+            <span>{{ item[0] }}</span>
+            <span>{{ item[1] }}</span>
+
+            <div class="quantity-control">
+              <button type="button" (click)="quantities['sainsburys'][i] = max1((quantities['sainsburys'][i] || 1) - 1)">−</button>
+              <input type="number"
+                    min="1"
+                    [(ngModel)]="quantities['sainsburys'][i]"
+                    (ngModelChange)="normalizeQuantity('sainsburys', i)"
+                    [value]="quantities['sainsburys'][i] || 1"
+                    class="quantity-input"/>
+              <button type="button" (click)="quantities['sainsburys'][i] = (quantities['sainsburys'][i] || 1) + 1">+</button>
+            </div>
+
+            <button (click)="onAddClick(item, 'sainsburys', i)"
+                    [class.pulse]="isAnimating(item, 'sainsburys', i)">
+              Add to basket
+            </button>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Home Bargains -->
+      <div *ngIf="results.homebargains.length" class="crawler">
+        <h3>Home Bargains</h3>
+        <ul>
+          <li *ngFor="let item of results.homebargains; let i = index">
+            <span>{{ item[0] }}</span>
+            <span>{{ item[1] }}</span>
+
+            <div class="quantity-control">
+              <button type="button" (click)="quantities['sainsburys'][i] = max1((quantities['sainsburys'][i] || 1) - 1)">−</button>
+              <input type="number"
+                    min="1"
+                    [(ngModel)]="quantities['homebargains'][i]"
+                    (ngModelChange)="normalizeQuantity('homebargains', i)"
+                    [value]="quantities['homebargains'][i] || 1"
+                    class="quantity-input"/>
+              <button type="button" (click)="quantities['homebargains'][i] = (quantities['homebargains'][i] || 1) + 1">+</button>
+            </div>
+
+            <button (click)="onAddClick(item, 'homebargains', i)"
+                    [class.pulse]="isAnimating(item, 'homebargains', i)">
+              Add to basket
+            </button>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Morrisons -->
+      <div *ngIf="results.morrisons.length" class="crawler">
+        <h3>Morrisons</h3>
+        <ul>
+          <li *ngFor="let item of results.morrisons; let i = index">
+            <span>{{ item[0] }}</span>
+            <span>{{ item[1] }}</span>
+
+            <div class="quantity-control">
+              <button type="button" (click)="quantities['sainsburys'][i] = max1((quantities['sainsburys'][i] || 1) - 1)">−</button>
+              <input type="number"
+                    min="1"
+                    [(ngModel)]="quantities['morrisons'][i]"
+                    (ngModelChange)="normalizeQuantity('morrisons', i)"
+                    [value]="quantities['morrisons'][i] || 1"
+                    class="quantity-input"/>
+              <button type="button" (click)="quantities['morrisons'][i] = (quantities['morrisons'][i] || 1) + 1">+</button>
+            </div>
+
+            <button (click)="onAddClick(item, 'morrisons', i)"
+                    [class.pulse]="isAnimating(item, 'morrisons', i)">
+              Add to basket
+            </button>
+          </li>
+        </ul>
+      </div>
+    </div>
   </div>
 
-  <!-- Home Bargains -->
-  <div *ngIf="results.homebargains.length" class="crawler">
-    <h3>Home Bargains</h3>
-    <ul>
-      <li *ngFor="let item of results.homebargains; let i = index">
-        <span>{{ item[0] }}</span>
-        <span>{{ item[1] }}</span>
-        <button (click)="onAddClick(item, 'homebargains', i)" [class.pulse]="isAnimating(item, 'homebargains', i)">Add to basket</button>
-      </li>
-    </ul>
-  </div>
+    <div class="right-column">
+    <h2>Your basket</h2>
+    <div *ngIf="(items$ | async) as items">
+      <p *ngIf="!items.length">Your basket is empty.</p>
 
-  <!-- Morrisons -->
-  <div *ngIf="results.morrisons.length" class="crawler">
-    <h3>Morrisons</h3>
-    <ul>
-      <li *ngFor="let item of results.morrisons; let i = index">
-        <span>{{ item[0] }}</span>
-        <span>{{ item[1] }}</span>
-        <button (click)="onAddClick(item, 'morrisons', i)" [class.pulse]="isAnimating(item, 'morrisons', i)">Add to basket</button>
-      </li>
-    </ul>
+      <ul *ngIf="items.length">
+        <li *ngFor="let item of items; let i = index">
+          <span>{{ item.title }}</span>
+          <span>£{{ (item.unitPrice * item.quantity).toFixed(2) }}</span>
+          <span>{{ item.market }}</span>
+
+          <div class="quantity-control">
+            <button type="button" (click)="decreaseQuantity(item)">-</button>
+            <input
+              type="number"
+              min="1"
+              [value]="item.quantity"
+              (change)="onQuantityInputChange(item, $event.target.value)"
+              class="quantity-input"
+            />
+            <button type="button" (click)="increaseQuantity(item)">+</button>
+          </div>
+
+          <button (click)="remove(item.id)">Remove</button>
+        </li>
+      </ul>
+
+      <div *ngIf="items.length" class="basket-total">
+        Total: £{{ getBasketTotal(items).toFixed(2) }}
+      </div>
+
+      <button *ngIf="items.length" (click)="clear()">Clear basket</button>
+    </div>
   </div>
 </div>
