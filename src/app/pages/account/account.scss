@@ -201,3 +201,56 @@ button:active {
   border: 1px solid var(--primary-green);
   color: var(--primary-green);
 }
+
+.quantity-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-right: 1rem;
+}
+
+.quantity-control button {
+  background-color: var(--primary-green);
+  color: white;
+  border: none;
+  padding: 0.35rem 0.6rem;
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.quantity-control button:hover {
+  background-color: var(--primary-green-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px var(--shadow);
+}
+
+.quantity-control button:active {
+  transform: translateY(0);
+}
+
+.quantity-control input.quantity-input {
+  width: 3rem;
+  text-align: center;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+}
+
+.quantity-control input.quantity-input:focus {
+  outline: none;
+  border-color: var(--primary-green-light);
+  box-shadow: 0 2px 8px var(--shadow);
+}
+
+.basket-total {
+  font-weight: 600;
+  font-size: 1.2rem;
+  margin-top: 1rem;
+  text-align: right;
+}

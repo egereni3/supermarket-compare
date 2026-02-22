@@ -22,6 +22,7 @@ export interface CrawlerItem {
   title: string;
   unitPrice: number;
   market: string;
+  quantity: number;
 }
 
 export type SearchResponse = SearchResultPayload;  // alias

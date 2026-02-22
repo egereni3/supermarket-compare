@@ -5,9 +5,6 @@
     <section class="profile-section">
       <h3>Profile</h3>
       <strong>Email:</strong> {{ currentEmail }}
-
-
-
     </section>
   </div>
 
@@ -17,13 +14,30 @@
       <p *ngIf="!items.length">Your basket is empty.</p>
 
       <ul *ngIf="items.length">
-        <li *ngFor="let item of items">
+        <li *ngFor="let item of items; let i = index">
           <span>{{ item.title }}</span>
-          <span>£{{ item.unitPrice.toFixed(2) }}</span>
+          <span>£{{ (item.unitPrice * item.quantity).toFixed(2) }}</span>
           <span>{{ item.market }}</span>
+
+          <div class="quantity-control">
+            <button type="button" (click)="decreaseQuantity(item)">-</button>
+            <input
+              type="number"
+              min="1"
+              [value]="item.quantity"
+              (change)="onQuantityInputChange(item, $event.target.value)"
+              class="quantity-input"
+            />
+            <button type="button" (click)="increaseQuantity(item)">+</button>
+          </div>
+
           <button (click)="remove(item.id)">Remove</button>
         </li>
       </ul>
+
+      <div *ngIf="items.length" class="basket-total">
+        Total: £{{ getBasketTotal(items).toFixed(2) }}
+      </div>
 
       <button *ngIf="items.length" (click)="clear()">Clear basket</button>
     </div>

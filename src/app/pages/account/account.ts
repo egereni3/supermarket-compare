@@ -31,7 +31,7 @@ export class Account {
   showPasswordForm = false;
 
   constructor(private basket: Basket, private auth: Auth) {
-    this.items$ = this.basket.items$; // typed as Observable<BasketItem[]>
+    this.items$ = this.basket.items$;
     const user = this.auth.getUser();
     this.currentEmail = user?.email ?? '';
   }
@@ -142,4 +142,34 @@ export class Account {
       },
     });
   }
+  increaseQuantity(item: BasketItem) {
+    this.updateQuantity(item, item.quantity + 1);
+  }
+
+  decreaseQuantity(item: BasketItem) {
+    if (item.quantity > 1) {
+      this.updateQuantity(item, item.quantity - 1);
+    }
+  }
+
+  onQuantityInputChange(item: BasketItem, value: string | number) {
+    let qty = Number(value);
+    if (isNaN(qty) || qty < 1) {
+      qty = 1;
+    }
+
+    this.updateQuantity(item, qty);
+  }
+
+  updateQuantity(item: BasketItem, quantity: number) {
+    if (quantity < 1) quantity = 1;
+
+    this.basket.updateQuantity(item.id, quantity);
+  }
+
+  getBasketTotal(items: BasketItem[]): number {
+    return items.reduce((total, item) => total + item.unitPrice * item.quantity, 0);
+  }
+  
+
 }

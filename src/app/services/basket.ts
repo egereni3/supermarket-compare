@@ -6,6 +6,7 @@ const BASKET_KEY = 'basket';
 
 export interface BasketItem extends CrawlerItem {
   id: string; // can be generated from title + market, etc.
+  quantity: number;
 }
 
 @Injectable({
@@ -15,13 +16,23 @@ export class Basket {
   private readonly itemsSubject = new BehaviorSubject<BasketItem[]>(this.read());
   readonly items$ = this.itemsSubject.asObservable();
 
-  add(item: CrawlerItem): void {
+  add(item: CrawlerItem, quantity: number = 1): void {
     const current = this.itemsSubject.value;
-    // Allow adding the same item multiple times by generating a unique id per entry
     const id = `${item.market}:${item.title}:${Date.now()}:${Math.random()
       .toString(36)
       .slice(2, 7)}`;
-    const updated = [...current, { ...item, id }];
+
+    const updated: BasketItem[] = [...current, { ...item, id, quantity }];
+    this.itemsSubject.next(updated);
+    this.write(updated);
+  }
+
+  updateQuantity(id: string, quantity: number): void {
+    if (quantity < 1) quantity = 1; // minimum 1
+
+    const updated = this.itemsSubject.value.map((item) =>
+      item.id === id ? { ...item, quantity } : item
+    );
     this.itemsSubject.next(updated);
     this.write(updated);
   }
@@ -40,7 +51,7 @@ export class Basket {
   private read(): BasketItem[] {
     try {
       const raw = localStorage.getItem(BASKET_KEY);
-      return raw ? JSON.parse(raw) as BasketItem[] : [];
+      return raw ? (JSON.parse(raw) as BasketItem[]) : [];
     } catch {
       return [];
     }

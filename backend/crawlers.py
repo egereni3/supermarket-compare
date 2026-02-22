@@ -4,7 +4,20 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from urllib.parse import quote
 import time
+
+# remove cookie consent
+
+# https://www.sainsburys.co.uk/gol-ui/SearchResults/
+
+# https://home.bargains/search?q=
+
+# https://groceries.morrisons.com/search?q=
+
+# Save search queries 
+
+# Instead of 20 seconds either wait for ready state
 
 def get_sainsburys_results(search_query):
 
@@ -13,59 +26,49 @@ def get_sainsburys_results(search_query):
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument(
-    "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.5993.70 Safari/537.36"
+        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.5993.70 Safari/537.36"
     )
     options.add_argument("--headless=new")
     options.add_argument("--window-size=1920,1080")
 
     driver = webdriver.Chrome(options=options)
-    driver.get("https://www.sainsburys.co.uk/")
     wait = WebDriverWait(driver, 20)
 
+    encoded_query = quote(search_query)
 
-    # Accept cookies if shown 
-    try: 
-        cookie_btn = wait.until( EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Continue and accept')]")) ) 
-        cookie_btn.click() 
-    except: 
-        pass 
-
-    # Wait for cookie overlay to disappear
-    WebDriverWait(driver, 20).until(
-        EC.invisibility_of_element_located((By.CSS_SELECTOR, ".onetrust-pc-dark-filter"))
-    )
-
-    # Search
-    search_input = wait.until(EC.presence_of_element_located((By.ID, "term")))
-    search_input.clear()
-    search_input.send_keys(search_query)
-
-    search_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-testid='search-btn']")))
-    search_button.click()
+    # Go directly to search results
+    search_url = f"https://www.sainsburys.co.uk/gol-ui/SearchResults/{encoded_query}"
+    driver.get(search_url)
 
     # Wait for product grid
     try:
-        wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, "article[data-testid^='product-tile-']")))
-        time.sleep(2)
+        wait.until(
+            EC.presence_of_all_elements_located(
+                (By.CSS_SELECTOR, "article[data-testid^='product-tile-']")
+            )
+        )
+        time.sleep(1)
     except:
         driver.quit()
         return []
 
-    # Extract
+    # Extract products
     products = driver.find_elements(By.CSS_SELECTOR, "article[data-testid^='product-tile-']")
     results = []
 
     for p in products:
         try:
-            name_el = p.find_element(By.CSS_SELECTOR, "h2[data-testid='product-tile-description'] a")
-            name = name_el.text.strip()
+            name = p.find_element(
+                By.CSS_SELECTOR, "h2[data-testid='product-tile-description'] a"
+            ).text.strip()
         except:
             name = "N/A"
 
         try:
-            price_el = p.find_element(By.CSS_SELECTOR, "span[data-testid='pt-retail-price']")
-            price = price_el.text.strip()
+            price = p.find_element(
+                By.CSS_SELECTOR, "span[data-testid='pt-retail-price']"
+            ).text.strip()
         except:
             price = "N/A"
 
@@ -75,38 +78,31 @@ def get_sainsburys_results(search_query):
     return results
 
 def get_homebargains_results(search_query):
+
     # Setup
     options = Options()
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--headless")
+    options.add_argument("--headless=new")
     options.add_argument("--window-size=1920,1080")
 
     driver = webdriver.Chrome(options=options)
     wait = WebDriverWait(driver, 20)
 
-    driver.get("https://home.bargains/")
+    # Encode search query
+    encoded_query = quote(search_query)
 
-    # Accept cookies
-    try:
-        cookie_btn = wait.until(EC.element_to_be_clickable(
-            (By.XPATH, "//button[contains(., 'Accept All')]")
-        ))
-        cookie_btn.click()
-    except:
-        None
-
-    # Search
-    search_input = wait.until(EC.presence_of_element_located((By.ID, "autocomplete-0-input")))
-    search_input.clear()
-    search_input.send_keys(search_query)
-
-    search_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[title='Submit']")))
-    search_button.click()
+    # Go directly to search results
+    search_url = f"https://home.bargains/search?q={encoded_query}"
+    driver.get(search_url)
 
     # Wait for results
     try:
-        wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, "li.ais-Hits-item")))
+        wait.until(
+            EC.presence_of_element_located(
+                (By.CSS_SELECTOR, "li.ais-Hits-item")
+            )
+        )
     except:
         driver.quit()
         return []
@@ -127,12 +123,13 @@ def get_homebargains_results(search_query):
             price = None
 
         if name and price:
-            items.append([name,price])
+            items.append([name, price])
 
     driver.quit()
     return items
 
 def get_morrisons_results(search_query):
+
     # Setup
     options = Options()
     options.add_argument("--no-sandbox")
@@ -143,51 +140,42 @@ def get_morrisons_results(search_query):
     driver = webdriver.Chrome(options=options)
     wait = WebDriverWait(driver, 20)
 
-    driver.get("https://groceries.morrisons.com/")
+    # Encode search query
+    encoded_query = quote(search_query)
 
-    # Accept cookies
+    # Go directly to search results
+    search_url = f"https://groceries.morrisons.com/search?q={encoded_query}"
+    driver.get(search_url)
+
+    # Wait for product page
     try:
-        cookie_btn = wait.until(EC.element_to_be_clickable(
-            (By.XPATH, "//button[contains(., 'Accept All')]")
-        ))
-        cookie_btn.click()
-    except:
-        None
-
-    # Search
-    search_input = wait.until(EC.presence_of_element_located((By.ID, "search")))
-    search_input.clear()
-    search_input.send_keys(search_query)
-
-    search_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[type='submit']")))
-    search_button.click()
-
-    # Wait for the product page to load
-    try:
-        wait.until(EC.presence_of_element_located((By.ID, "product-page")))
-        
+        wait.until(
+            EC.presence_of_element_located((By.ID, "product-page"))
+        )
     except:
         driver.quit()
         return []
 
-
     # Extract
-    
     items = []
-    time.sleep(2)
-    product_cards = driver.find_elements(By.CSS_SELECTOR, "div[data-retailer-anchor^='fop']")
+    time.sleep(1)  # small buffer for lazy-loaded tiles
 
+    product_cards = driver.find_elements(
+        By.CSS_SELECTOR, "div[data-retailer-anchor^='fop']"
+    )
 
     for card in product_cards:
         try:
-            # Product name
-            name = card.find_element(By.CSS_SELECTOR, "h3[data-test='fop-title']").text.strip()
+            name = card.find_element(
+                By.CSS_SELECTOR, "h3[data-test='fop-title']"
+            ).text.strip()
         except:
             name = None
 
         try:
-            # Product price
-            price = card.find_element(By.CSS_SELECTOR, "span[data-test='fop-price']").text.strip()
+            price = card.find_element(
+                By.CSS_SELECTOR, "span[data-test='fop-price']"
+            ).text.strip()
         except:
             price = None
 
