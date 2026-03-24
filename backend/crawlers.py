@@ -5,17 +5,20 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from urllib.parse import quote
+from urllib.parse import quote
 import time
 
-# add href grabbing
+# remove cookie consent
 
-# add image grabbing
+# https://www.sainsburys.co.uk/gol-ui/SearchResults/
 
-# TOON for LLM compression
+# https://home.bargains/search?q=
 
-# API Key for Gemini is free
+# https://groceries.morrisons.com/search?q=
 
+# Save search queries 
 
+# Instead of 20 seconds either wait for ready state
 
 def get_sainsburys_results(search_query):
 
@@ -67,11 +70,8 @@ def get_sainsburys_results(search_query):
 
     for p in products:
         try:
-            name_link = p.find_element(
-                By.CSS_SELECTOR, "h2[data-testid='product-tile-description'] a"
-            )
-            name = name_link.text.strip()
-            href = name_link.get_attribute("href") or ""
+            name_el = p.find_element(By.CSS_SELECTOR, "h2[data-testid='product-tile-description'] a")
+            name = name_el.text.strip()
         except:
             name = "N/A"
             href = ""
@@ -100,22 +100,24 @@ def get_homebargains_results(search_query):
     driver = webdriver.Chrome(options=options)
     wait = WebDriverWait(driver, 20)
 
-    driver.execute_cdp_cmd("Network.enable", {})
-    driver.execute_cdp_cmd("Network.setBlockedURLs", {
-"urls": [
-"*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif", "*.svg",
-"*.woff", "*.woff2", "*.ttf", "*.otf",
-"*google-analytics.com/*", "*googletagmanager.com/*",
-"*doubleclick.net/*", "*facebook.net/*", "*hotjar.com/*",
-            ]
-        })
+    driver.get("https://home.bargains/")
 
-    # Encode search query
-    encoded_query = quote(search_query)
+    # Accept cookies
+    try:
+        cookie_btn = wait.until(EC.element_to_be_clickable(
+            (By.XPATH, "//button[contains(., 'Accept All')]")
+        ))
+        cookie_btn.click()
+    except:
+        None
 
-    # Go directly to search results
-    search_url = f"https://home.bargains/search?q={encoded_query}"
-    driver.get(search_url)
+    # Search
+    search_input = wait.until(EC.presence_of_element_located((By.ID, "autocomplete-0-input")))
+    search_input.clear()
+    search_input.send_keys(search_query)
+
+    search_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[title='Submit']")))
+    search_button.click()
 
     # Wait for results
     try:
@@ -149,7 +151,7 @@ def get_homebargains_results(search_query):
             href = ""
 
         if name and price:
-            items.append([name, price, href])
+            items.append([name,price])
 
     driver.quit()
     return items
@@ -166,21 +168,24 @@ def get_morrisons_results(search_query):
     driver = webdriver.Chrome(options=options)
     wait = WebDriverWait(driver, 20)
 
-    driver.execute_cdp_cmd("Network.enable", {})
-    driver.execute_cdp_cmd("Network.setBlockedURLs", {
-"urls": [
-"*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif", "*.svg",
-"*.woff", "*.woff2", "*.ttf", "*.otf",
-"*google-analytics.com/*", "*googletagmanager.com/*",
-"*doubleclick.net/*", "*facebook.net/*", "*hotjar.com/*",
-            ]
-        })
-    # Encode search query
-    encoded_query = quote(search_query)
+    driver.get("https://groceries.morrisons.com/")
 
-    # Go directly to search results
-    search_url = f"https://groceries.morrisons.com/search?q={encoded_query}"
-    driver.get(search_url)
+    # Accept cookies
+    try:
+        cookie_btn = wait.until(EC.element_to_be_clickable(
+            (By.XPATH, "//button[contains(., 'Accept All')]")
+        ))
+        cookie_btn.click()
+    except:
+        None
+
+    # Search
+    search_input = wait.until(EC.presence_of_element_located((By.ID, "search")))
+    search_input.clear()
+    search_input.send_keys(search_query)
+
+    search_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[type='submit']")))
+    search_button.click()
 
     # Wait for product page
     try:
