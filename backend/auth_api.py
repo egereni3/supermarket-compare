@@ -50,10 +50,21 @@ def api_register(creds: Credentials):
 def api_search(q: str):
     key = normalize_query(q)
 
-    # Call crawlers (sequential; you can parallelize later if needed)
-    sains = get_sainsburys_results(q)
-    homeb = get_homebargains_results(q)
-    morri = get_morrisons_results(q)
+    # Call crawlers defensively so one retailer failure does not 500 the whole API.
+    try:
+        sains = get_sainsburys_results(q)
+    except Exception:
+        sains = []
+
+    try:
+        homeb = get_homebargains_results(q)
+    except Exception:
+        homeb = []
+
+    try:
+        morri = get_morrisons_results(q)
+    except Exception:
+        morri = []
 
     return SearchResponse(
         query=q,

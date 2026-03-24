@@ -72,6 +72,7 @@ def get_sainsburys_results(search_query):
         try:
             name_el = p.find_element(By.CSS_SELECTOR, "h2[data-testid='product-tile-description'] a")
             name = name_el.text.strip()
+            href = name_el.get_attribute("href") or ""
         except:
             name = "N/A"
             href = ""

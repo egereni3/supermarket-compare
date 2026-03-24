@@ -189,7 +189,6 @@ export class Account {
   getBasketTotal(items: BasketItem[]): number {
     return items.reduce((total, item) => total + item.unitPrice * item.quantity, 0);
   }
-<<<<<<< HEAD
 
   async buildBasketRoute(): Promise<void> {
     this.mapError = null;
@@ -502,8 +501,5 @@ export class Account {
         .finally(() => window.clearTimeout(timeoutId));
     });
   }
-=======
-  
->>>>>>> 4e21a73a79d966030b8a5b504262a00d65e37f28
 
 }

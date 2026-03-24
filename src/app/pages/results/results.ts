@@ -4,20 +4,13 @@ import { NgForOf, NgIf, AsyncPipe, CommonModule } from '@angular/common';
 import { Search, SearchResultPayload, ItemRow } from '../../services/search';
 import { Auth } from '../../auth/auth';
 import { FormsModule } from '@angular/forms';
-<<<<<<< HEAD
 import { Basket, BasketItem } from '../../services/basket';
 import { Observable } from 'rxjs';
-=======
->>>>>>> 4e21a73a79d966030b8a5b504262a00d65e37f28
 
 @Component({
   selector: 'app-results',
   standalone: true,
-<<<<<<< HEAD
   imports: [NgForOf, NgIf, FormsModule, AsyncPipe, CommonModule],
-=======
-  imports: [NgForOf, NgIf, FormsModule],
->>>>>>> 4e21a73a79d966030b8a5b504262a00d65e37f28
   templateUrl: './results.html',
   styleUrls: ['./results.scss'],
 })
@@ -25,12 +18,8 @@ export class Results implements OnInit {
   query = '';
   results: SearchResultPayload['results'] | null = null;
   loading = false;
-<<<<<<< HEAD
   error: string | null = null;
   items$: Observable<BasketItem[]>;
-=======
-
->>>>>>> 4e21a73a79d966030b8a5b504262a00d65e37f28
   animatingKeys = new Set<string>();
 
   quantities: Record<string, number[]> = {
@@ -38,14 +27,11 @@ export class Results implements OnInit {
     homebargains: [],
     morrisons: [],
   };
-<<<<<<< HEAD
   private readonly stores: Array<'sainsburys' | 'homebargains' | 'morrisons'> = [
     'sainsburys',
     'homebargains',
     'morrisons',
   ];
-=======
->>>>>>> 4e21a73a79d966030b8a5b504262a00d65e37f28
 
   constructor(
     private route: ActivatedRoute,
@@ -53,16 +39,12 @@ export class Results implements OnInit {
     private basket: Basket,
     private auth: Auth,
     private router: Router
-<<<<<<< HEAD
     
   ) {
     this.items$ = this.basket.items$;
     const user = this.auth.getUser();
 
   }
-=======
-  ) {}
->>>>>>> 4e21a73a79d966030b8a5b504262a00d65e37f28
 
   ngOnInit(): void {
     if (!this.auth.isLoggedIn()) {
@@ -70,11 +52,6 @@ export class Results implements OnInit {
       return;
     }
 
-<<<<<<< HEAD
-=======
-    type Store = 'sainsburys' | 'homebargains' | 'morrisons';
-
->>>>>>> 4e21a73a79d966030b8a5b504262a00d65e37f28
     this.route.queryParams.subscribe((params) => {
       const q = params['q'] ?? '';
       this.query = q;
@@ -82,23 +59,7 @@ export class Results implements OnInit {
       const cached = this.search.getLastResult();
       if (cached && cached.query === q) {
         this.results = cached.results;
-<<<<<<< HEAD
         this.initializeQuantities();
-=======
-
-        if (this.results) { 
-          const stores: Store[] = ['sainsburys', 'homebargains', 'morrisons'];
-          stores.forEach(store => {
-            if (this.results && this.results[store]?.length) {
-              this.results[store].forEach((_, i) => {
-                if (!this.quantities[store][i]) {
-                  this.quantities[store][i] = 1;
-                }
-              });
-            }
-          });
-        }
->>>>>>> 4e21a73a79d966030b8a5b504262a00d65e37f28
 
         return;
       }
@@ -109,23 +70,7 @@ export class Results implements OnInit {
           next: (resp: SearchResultPayload) => {
             this.loading = false;
             this.results = resp.results;
-<<<<<<< HEAD
             this.initializeQuantities();
-=======
-
-            if (this.results) {
-              const stores: Store[] = ['sainsburys', 'homebargains', 'morrisons'];
-              stores.forEach(store => {
-                if (this.results && this.results[store]?.length) {
-                  this.results[store].forEach((_, i) => {
-                    if (!this.quantities[store][i]) {
-                      this.quantities[store][i] = 1;
-                    }
-                  });
-                }
-              });
-            }
->>>>>>> 4e21a73a79d966030b8a5b504262a00d65e37f28
           },
           error: () => {
             this.loading = false;
@@ -139,7 +84,6 @@ export class Results implements OnInit {
     return Math.max(1, value);
   }
 
-<<<<<<< HEAD
   private initializeQuantities(): void {
     if (!this.results) return;
     this.stores.forEach((store) => {
@@ -152,8 +96,6 @@ export class Results implements OnInit {
     });
   }
 
-=======
->>>>>>> 4e21a73a79d966030b8a5b504262a00d65e37f28
   normalizeQuantity(store: string, index: number): void {
     if (!this.quantities[store][index] || this.quantities[store][index] < 1) {
       this.quantities[store][index] = 1;
