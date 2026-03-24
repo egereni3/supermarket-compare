@@ -231,6 +231,10 @@ def get_morrisons_results(search_query):
     driver.quit()
     return items
 
+def fallback_llm_search():
+    # Placeholder for LLM-based search fallback
+    return None
+
 #Add a synthetic website instead of sainsburys
 
 #Modular scraping, changing circumstances
