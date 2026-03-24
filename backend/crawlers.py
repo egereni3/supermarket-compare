@@ -7,6 +7,7 @@ from selenium.webdriver.chrome.options import Options
 from urllib.parse import quote
 from urllib.parse import quote
 import time
+import ollama
 
 # remove cookie consent
 
