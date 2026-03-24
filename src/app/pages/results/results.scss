@@ -111,7 +111,7 @@ p.error-message {
 .crawler li {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 1rem;
   padding: 1rem;
   background-color: var(--background);
@@ -125,13 +125,31 @@ p.error-message {
   box-shadow: 0 2px 8px var(--shadow);
 }
 
-.crawler li span:first-child {
+.item-name {
   flex: 1;
-  font-weight: 500;
-  color: var(--text-primary);
+  min-width: 0;
 }
 
-.crawler li span:nth-child(2) {
+.item-name span,
+.item-name a {
+  font-weight: 500;
+  color: var(--text-primary);
+  text-decoration: none;
+  word-break: break-word;
+}
+
+.item-name a:hover {
+  text-decoration: underline;
+}
+
+.item-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.item-price {
   font-weight: 600;
   color: var(--primary-green-dark);
   font-size: 1.1rem;

@@ -27,6 +27,11 @@ export class Results implements OnInit {
     homebargains: [],
     morrisons: [],
   };
+  private readonly stores: Array<'sainsburys' | 'homebargains' | 'morrisons'> = [
+    'sainsburys',
+    'homebargains',
+    'morrisons',
+  ];
 
   constructor(
     private route: ActivatedRoute,
@@ -47,8 +52,6 @@ export class Results implements OnInit {
       return;
     }
 
-    type Store = 'sainsburys' | 'homebargains' | 'morrisons';
-
     this.route.queryParams.subscribe((params) => {
       const q = params['q'] ?? '';
       this.query = q;
@@ -56,19 +59,7 @@ export class Results implements OnInit {
       const cached = this.search.getLastResult();
       if (cached && cached.query === q) {
         this.results = cached.results;
-
-        if (this.results) { 
-          const stores: Store[] = ['sainsburys', 'homebargains', 'morrisons'];
-          stores.forEach(store => {
-            if (this.results && this.results[store]?.length) {
-              this.results[store].forEach((_, i) => {
-                if (!this.quantities[store][i]) {
-                  this.quantities[store][i] = 1;
-                }
-              });
-            }
-          });
-        }
+        this.initializeQuantities();
 
         return;
       }
@@ -79,19 +70,7 @@ export class Results implements OnInit {
           next: (resp: SearchResultPayload) => {
             this.loading = false;
             this.results = resp.results;
-
-            if (this.results) {
-              const stores: Store[] = ['sainsburys', 'homebargains', 'morrisons'];
-              stores.forEach(store => {
-                if (this.results && this.results[store]?.length) {
-                  this.results[store].forEach((_, i) => {
-                    if (!this.quantities[store][i]) {
-                      this.quantities[store][i] = 1;
-                    }
-                  });
-                }
-              });
-            }
+            this.initializeQuantities();
           },
           error: () => {
             this.loading = false;
@@ -103,6 +82,18 @@ export class Results implements OnInit {
 
   max1(value: number): number {
     return Math.max(1, value);
+  }
+
+  private initializeQuantities(): void {
+    if (!this.results) return;
+    this.stores.forEach((store) => {
+      if (!this.results) return;
+      this.results[store].forEach((_, i) => {
+        if (!this.quantities[store][i]) {
+          this.quantities[store][i] = 1;
+        }
+      });
+    });
   }
 
   normalizeQuantity(store: string, index: number): void {
@@ -177,9 +168,16 @@ export class Results implements OnInit {
 
     this.loading = true;
     this.search.search(trimmed).subscribe({
-      next: () => {
+      next: (resp: SearchResultPayload) => {
         this.loading = false;
-        this.router.navigate(['/results'], { queryParams: { q: trimmed } });
+        this.results = resp.results;
+        this.initializeQuantities();
+
+        if (this.query !== trimmed) {
+          this.router.navigate(['/results'], { queryParams: { q: trimmed } });
+        } else {
+          this.query = trimmed;
+        }
       },
       error: () => {
         this.loading = false;

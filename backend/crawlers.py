@@ -67,11 +67,14 @@ def get_sainsburys_results(search_query):
 
     for p in products:
         try:
-            name = p.find_element(
+            name_link = p.find_element(
                 By.CSS_SELECTOR, "h2[data-testid='product-tile-description'] a"
-            ).text.strip()
+            )
+            name = name_link.text.strip()
+            href = name_link.get_attribute("href") or ""
         except:
             name = "N/A"
+            href = ""
 
         try:
             price = p.find_element(
@@ -80,7 +83,7 @@ def get_sainsburys_results(search_query):
         except:
             price = "N/A"
 
-        results.append([name, price])
+        results.append([name, price, href])
 
     driver.quit()
     return results
@@ -140,8 +143,13 @@ def get_homebargains_results(search_query):
         except:
             price = None
 
+        try:
+            href = card.find_element(By.CSS_SELECTOR, "a").get_attribute("href") or ""
+        except:
+            href = ""
+
         if name and price:
-            items.append([name, price])
+            items.append([name, price, href])
 
     driver.quit()
     return items
@@ -206,8 +214,13 @@ def get_morrisons_results(search_query):
         except:
             price = None
 
+        try:
+            href = card.find_element(By.CSS_SELECTOR, "a[href]").get_attribute("href") or ""
+        except:
+            href = ""
+
         if name and price:
-            items.append([name, price])
+            items.append([name, price, href])
 
     driver.quit()
     return items

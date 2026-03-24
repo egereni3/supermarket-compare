@@ -3,9 +3,9 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, of } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
-const SEARCH_CACHE_KEY = 'searchCache';
+const SEARCH_CACHE_KEY = 'searchCache_v2';
 
-export type ItemRow = [string, string]; // [name, price]
+export type ItemRow = [string, string, string?]; // [name, price, href?]
 
 export interface SearchResultPayload {
   query: string;

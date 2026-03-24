@@ -39,6 +39,21 @@
         Total: £{{ getBasketTotal(items).toFixed(2) }}
       </div>
 
+      <div *ngIf="items.length" class="route-panel">
+        <button type="button" (click)="buildBasketRoute()" [disabled]="loadingRoute">
+          {{ loadingRoute ? 'Planning route...' : 'Show route on map' }}
+        </button>
+        <p *ngIf="mapError" class="map-error">{{ mapError }}</p>
+        <p *ngIf="routeSummary" class="map-summary">{{ routeSummary }}</p>
+      </div>
+
+      <div
+        *ngIf="items.length"
+        id="basket-route-map"
+        class="basket-route-map"
+        [class.visible]="loadingRoute || mapReady"
+      ></div>
+
       <button *ngIf="items.length" (click)="clear()">Clear basket</button>
     </div>
   </div>

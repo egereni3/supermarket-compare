@@ -5,7 +5,8 @@ import { map, tap } from 'rxjs/operators';
 import { Observable } from 'rxjs';
 
 const USER_KEY = 'user';
-const SEARCH_CACHE_KEY = 'searchCache';
+const SEARCH_CACHE_KEY = 'searchCache_v2';
+const LEGACY_SEARCH_CACHE_KEY = 'searchCache';
 const BASKET_KEY = 'basket';
 
 interface LoginResponse {
@@ -65,6 +66,7 @@ export class Auth {
     try {
       localStorage.removeItem(USER_KEY);
       localStorage.removeItem(SEARCH_CACHE_KEY);
+      localStorage.removeItem(LEGACY_SEARCH_CACHE_KEY);
       localStorage.removeItem(BASKET_KEY);
     } catch {}
     this._loggedIn.set(false);
