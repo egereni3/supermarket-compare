@@ -17,7 +17,6 @@ export interface SearchResultPayload {
   };
 }
 
-// For backwards compatibility / convenience
 export interface CrawlerItem {
   title: string;
   unitPrice: number;
@@ -25,7 +24,7 @@ export interface CrawlerItem {
   quantity: number;
 }
 
-export type SearchResponse = SearchResultPayload;  // alias
+export type SearchResponse = SearchResultPayload; 
 
 type SearchCache = Record<string, SearchResultPayload>;
 
@@ -53,6 +52,18 @@ export class Search {
   }
 
   private writeCache(cache: SearchCache): void {
+    const payloads = Object.values(cache);
+
+    const allStoresHaveResults = payloads.every(payload =>
+      Object.values(payload.results ?? {}).every(
+        (storeResults: any[]) => Array.isArray(storeResults) && storeResults.length > 0
+      )
+    );
+
+    console.log("writeCache called", payloads);
+
+    if (!allStoresHaveResults) return;
+
     try {
       localStorage.setItem(SEARCH_CACHE_KEY, JSON.stringify(cache));
     } catch {
