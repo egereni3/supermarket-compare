@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 import time
 import ollama
 import json
+import re as _re
 
 # https://www.sainsburys.co.uk/gol-ui/SearchResults/
 
@@ -16,6 +17,26 @@ import json
 
 # https://groceries.morrisons.com/search?q=
 
+FORCE_LLM_FALLBACK = True
+
+DEFAULT_MODEL = "qwen2.5:7b"
+FALLBACK_MODEL = "phi3:3.8b"
+
+# Tags that are pure noise — remove entirely including their children
+_STRIP_TAGS = [
+    "script", "style", "svg", "noscript", "img", "picture", "source",
+    "header", "footer", "nav", "aside", "iframe", "video", "audio",
+    "form", "input", "button", "meta", "link", "head",
+]
+
+# Attributes worth keeping — everything else is stripped
+_KEEP_ATTRS = {"href", "class", "data-testid", "data-test", "data-retailer-anchor", "id"}
+
+# Price patterns
+_PRICE_RE = _re.compile(
+    r"(?:£)\s*\d+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?\s*p\b",
+    _re.IGNORECASE,
+)
 
 def get_sainsburys_results(search_query):
     print(f"\n{'='*60}")
@@ -50,6 +71,8 @@ def get_sainsburys_results(search_query):
     print(f"[Sainsbury's] Navigating to: {search_url}")
     driver.get(search_url)
     print(f"[Sainsbury's] Page loaded. Title: {driver.title!r}  |  HTML size: {len(driver.page_source)} chars")
+
+    WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, "a.pt__link")))
 
     if FORCE_LLM_FALLBACK:
         print("[Sainsbury's] FORCE_LLM_FALLBACK enabled — skipping CSS extraction.")
@@ -94,79 +117,9 @@ def get_sainsburys_results(search_query):
  
     except:
         print("[Sainsbury's] Extraction failed — invoking LLM fallback.")
+        print(driver.page_source[:3000])
         results = fallback_llm_search(driver.page_source, site='sainsburys')
  
-    driver.quit()
-    return results
-
-    # Setup
-    options = Options()
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.5993.70 Safari/537.36"
-    )
-    options.add_argument("--headless=new")
-    options.add_argument("--window-size=1920,1080")
-
-    driver = webdriver.Chrome(options=options)
-    wait = WebDriverWait(driver, 20)
-
-    encoded_query = quote(search_query)
-
-    driver.execute_cdp_cmd("Network.enable", {})
-    driver.execute_cdp_cmd("Network.setBlockedURLs", {
-"urls": [
-"*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif", "*.svg",
-"*.woff", "*.woff2", "*.ttf", "*.otf",
-"*google-analytics.com/*", "*googletagmanager.com/*",
-"*doubleclick.net/*", "*facebook.net/*", "*hotjar.com/*",
-            ]
-        })
-
-    # Go directly to search results
-    search_url = f"https://www.sainsburys.co.uk/gol-ui/SearchResults/{encoded_query}"
-    driver.get(search_url)
-
-    # Wait for product grid
-    try:
-        wait.until(
-            EC.presence_of_all_elements_located(
-                (By.CSS_SELECTOR, "article[data-testid^='product-tile-']")
-            )
-        )
-        time.sleep(1)
-    except:
-        driver.quit()
-        return []
-
-    try:
-        # Extract products
-        products = driver.find_elements(By.CSS_SELECTOR, "article[data-testid^='product-tile-']")
-        results = []
-
-        for p in products:
-            try:
-                name_el = p.find_element(By.CSS_SELECTOR, "h2[data-testid='product-tile-description'] a")
-                name = name_el.text.strip()
-                href = name_el.get_attribute("href") or ""
-            except:
-                name = "N/A"
-                href = ""
-
-            try:
-                price = p.find_element(
-                    By.CSS_SELECTOR, "span[data-testid='pt-retail-price']"
-                ).text.strip()
-            except:
-                price = "N/A"
-
-            results.append([name, price, href])
-    except:
-        None
-        #fallback_llm_search
-
     driver.quit()
     return results
 
@@ -324,32 +277,6 @@ def get_morrisons_results(search_query):
     driver.quit()
     return items
 
-DEFAULT_MODEL = "qwen2.5:7b"
-FALLBACK_MODEL = "phi3:3.8b"
-
-# Tags that are pure noise — remove entirely including their children
-_STRIP_TAGS = [
-    "script", "style", "svg", "noscript", "img", "picture", "source",
-    "header", "footer", "nav", "aside", "iframe", "video", "audio",
-    "form", "input", "button", "meta", "link", "head",
-]
-
-# Attributes worth keeping — everything else is stripped
-_KEEP_ATTRS = {"href", "class", "data-testid", "data-test", "data-retailer-anchor", "id"}
-
-# Tags whose text content is never useful even if the tag itself stays
-_EMPTY_TEXT_TAGS = {"span", "div", "li", "ul", "ol", "p", "section", "article"}
-
-
-import re as _re
-
-# Price patterns
-_PRICE_RE = _re.compile(
-    r"(?:£)\s*\d+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?\s*p\b",
-    _re.IGNORECASE,
-)
-
-
 def clean_html(html: str) -> str:
 
     import time
@@ -378,7 +305,6 @@ def clean_html(html: str) -> str:
           f"size: {len(cleaned):,} chars ({100*len(cleaned)/max(len(html),1):.1f}% of original)")
     return cleaned
 
-
 def html_to_product_dicts(soup: "BeautifulSoup", site: str = "unknown") -> list[dict]:
 
     import time
@@ -387,20 +313,44 @@ def html_to_product_dicts(soup: "BeautifulSoup", site: str = "unknown") -> list[
 
     results = []
 
-    if site == "sainsburys":
-        # Real Sainsbury's selectors hrefs are already absolute
-        for card in soup.select("article[data-testid]"):
-            if not card.get("data-testid", "").startswith("product-tile-"):
-                continue
-            name_el  = card.select_one("h2[data-testid='product-tile-description'] a")
-            price_el = card.select_one("span[data-testid='pt-retail-price']")
-            name  = name_el.get_text(strip=True) if name_el else ""
-            price = price_el.get_text(strip=True) if price_el else ""
-            href  = name_el.get("href", "") if name_el else ""
-            if name or price:
-                results.append({"name": name, "price": price, "href": href})
+    if site == "sainsburys#":
+        print(f"[encode_for_llm] DEBUG: cleaned HTML preview:")
+        print("="*80)
+        print(str(soup)[:2000])
+        print("="*80)
 
-    elif site == "homebargains":
+        BASE = "https://www.sainsburys.co.uk"
+
+        cards = soup.select("article[data-testid^='product-tile-']")
+        print(f"[html_to_product_dicts] Sainsburys tiles found: {len(cards)}")
+
+        for card in cards:
+
+            name_el = card.select_one('[data-testid="product-tile-description"] a')
+
+            price_el = (
+                card.select_one('[data-testid="contextual-price-text"]')
+                or card.select_one('[data-testid="pt-retail-price"]')
+                or card.select_one(".pt__cost--price")
+            )
+
+            name = name_el.get_text(strip=True) if name_el else ""
+            price = price_el.get_text(strip=True) if price_el else ""
+
+            href = ""
+            if name_el and name_el.has_attr("href"):
+                href = name_el["href"].strip()
+                if href and not href.startswith("http"):
+                    href = BASE + href
+
+            if name:
+                results.append({
+                    "name": name,
+                    "price": price,
+                    "href": href
+                })
+
+    elif site == "homebargains#":
         BASE = "https://home.bargains"
         for card in soup.select("li"):
             name_el  = card.select_one(".item-name a") or card.select_one(".title")
@@ -418,7 +368,7 @@ def html_to_product_dicts(soup: "BeautifulSoup", site: str = "unknown") -> list[
             if name or price:
                 results.append({"name": name, "price": price, "href": href})
 
-    elif site == "morrisons":
+    elif site == "morrisons#":
         BASE = "https://groceries.morrisons.com"
         # Try data test selectors first (original site structure)
         for card in soup.select("div[data-retailer-anchor]"):
@@ -543,10 +493,6 @@ def encode_for_llm(raw_html: str, site: str = "unknown") -> tuple[str, str, list
               f"({len(cleaned):,} chars, {time.time()-t0:.1f}s)")
         return cleaned, "html", []
 
-# Set to True to skip CSS scraping and always use the LLM fallback (for testing)
-FORCE_LLM_FALLBACK = True
-
-
 def fallback_llm_search(raw_html: str, model: str = DEFAULT_MODEL, site: str = "unknown") -> list[list[str]]:
     """
     Full pipeline: raw HTML → heuristic extraction → (LLM only if heuristic fails)
@@ -556,7 +502,7 @@ def fallback_llm_search(raw_html: str, model: str = DEFAULT_MODEL, site: str = "
     the heuristic finds nothing (e.g. site has been redesigned).
     """
     payload, fmt, heuristic_products = encode_for_llm(raw_html, site=site)
-
+    
     # Short-circuit: heuristic succeeded — no LLM needed
     if heuristic_products:
         print(f"[fallback] Heuristic returned {len(heuristic_products)} products — skipping LLM.")
@@ -578,7 +524,7 @@ def fallback_llm_search(raw_html: str, model: str = DEFAULT_MODEL, site: str = "
     else:
         format_description = "cleaned HTML"
 
-    prompt = f"""You are a data extractor. Below is a grocery/retail search results page encoded as {format_description}
+    prompt = f"""You are a data extractor. Below is a retail search results page encoded as {format_description}
 
 Extract every product and return ONLY a JSON array.
 Each element must be an object with exactly these three keys:
@@ -590,6 +536,27 @@ Rules:
 - Return ONLY the JSON array. No markdown fences, no explanation.
 - Use empty string for any field you cannot find.
 - Do not invent data.
+
+Examples:
+
+HTML:
+<a href="/product/1">Cherry Tomatoes</a>
+<span>£2.50</span>
+
+Output:
+[
+ {"name":"Cherry Tomatoes","price":"£2.50","href":"/product/1"}
+]
+
+HTML:
+<a tabindex="0" class="_text_cn5lb_1 _text--m_cn5lb_23 _link-standalone_v2p9r_8" data-synthetics="bop-link" data-test="fop-product-link" aria-hidden="false" href="/products/morrisons-salad-tomatoes/108389100" data-discover="true"><h3 class="_text_cn5lb_1 _text--m_cn5lb_23" data-test="fop-title">Morrisons Salad Tomatoes</h3></a>
+<span class="salt-vc">Price</span>
+<span class="_display_xy0eg_1 sc-1fkdssq-1 eDGgtR" data-test="fop-price">£0.99</span>
+
+Output:
+[
+ {"name":"Morrisons Salad Tomatoes","price":"£0.99","href":"/products/morrisons-salad-tomatoes/108389100"}
+]
 
 DATA:
 {payload}
@@ -650,29 +617,3 @@ DATA:
 
     print("[LLM fallback] All models failed. Returning empty list.")
     return []
-
-#    "perfect": {
-#        "objective": "Design and implement a CO₂ monitoring device achieving ±1% accuracy, logging every 60s to a secure dashboard, with a field-tested prototype demonstrated by Week 8.",
-#        "json": {"S":10,"M":10,"A":10,"R":5,"T":5,"W":10,"total_50":50,"reason":"Explicit outcome, strong metrics, feasible scope, clear deadline, polished writing."}
-#    },
-#    "strong": {
-#        "objective": "Develop a mobile dashboard to visualise lab temperature and humidity with <2s update latency, fully operational by the end of Semester 1.",
-#        "json": {"S":8,"M":8,"A":8,"R":4,"T":3.5,"W":8,"total_50":39.5,"reason":"Clear deliverable and metrics; deadline less explicit than a dated week; feasible and well-written."}
-#    },
-#    "pass": {
-#        "objective": "Design a user-friendly interface for sensor data.",
-#        "json": {"S":4,"M":3.5,"A":4,"R":2.5,"T":0,"W":4,"total_50":18,"reason":"Outcome stated but subjective and no timeframe; measurability weak; writing acceptable."}
-#    },
-#    "weak": {
-#        "objective": "Investigate algorithms using MATLAB.",
-#        "json": {"S":2,"M":1,"A":2,"R":1,"T":0,"W":2,"total_50":8,"reason":"Process-focused, no metrics or deadline; rationale unclear; methodology jargon dominates."}
-#    },
-#    "subjective": {
-#        "objective": "Evaluate system power use to achieve significant reduction compared to current solutions.",
-#        "json": {"S":4,"M":3,"A":4,"R":2,"T":0,"W":4,"total_50":17,"reason":"Subjective 'significant' with no metric; no timeframe; feasibility unclear."}
-#    },
-#    "process_time": {
-#        "objective": "Investigate scheduling algorithms and submit a brief summary report by Week 4.",
-#        "json": {"S":3,"M":2,"A":3,"R":2,"T":5,"W":4,"total_50":19,"reason":"Process-focused; weak metrics; clear deadline improves T only."}
-#    }
-# fewshotting good option
