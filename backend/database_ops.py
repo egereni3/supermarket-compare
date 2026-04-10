@@ -75,8 +75,6 @@ def insert_user(email: str, password: str):
         with connection.cursor() as cursor:
             cursor.execute(query, (email, hashed_password))
         connection.commit()
-        # cursor is still valid here because "with connection.cursor()" scope ended
-        # only after commit; we keep lastrowid
         last_id = cursor.lastrowid
     return last_id
 
@@ -259,8 +257,6 @@ def _register_logic(email: str, password: str) -> dict:
 def login(credentials: Credentials):
     result = _login_logic(credentials.email, credentials.password)
     if not result["success"]:
-        # You can either return 200 with success=False, or raise 400; for Angular
-        # it’s often simpler to always return 200 and check "success"
         return AuthResponse(**result)
     return AuthResponse(**result)
 
