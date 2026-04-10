@@ -3,8 +3,16 @@ from typing import Optional
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
-from .crawlers import (get_sainsburys_results, get_homebargains_results, get_morrisons_results,)
-from .database_ops import _login_logic as db_login, _register_logic as db_register_user
+from .crawlers import search_all
+from .database_ops import (
+    _login_logic as db_login,
+    _register_logic as db_register_user,
+    get_db_connection,
+    update_user,
+    is_valid_email,
+    is_strong_password,
+    insert_search_match,
+)
 
 app = FastAPI()
 
@@ -17,13 +25,13 @@ app.add_middleware(
 )
 
 class SearchResponse(BaseModel):
-    query: str              
-    key: str                
-    results: dict           
+    query: str
+    key: str
+    results: dict
 
-def normalize_query(q: str) -> str:
-    import re
-    return re.sub(r'[^a-z0-9 ]+', '', q.lower().strip())
+class SearchMatchPayload(BaseModel):
+    user_id: int
+    search_words: list[str]
 
 class Credentials(BaseModel):
     email: EmailStr
@@ -36,6 +44,15 @@ class AuthResponse(BaseModel):
     user_id: Optional[int] = None
     email: Optional[EmailStr] = None
 
+class UserUpdate(BaseModel):
+    email: Optional[EmailStr] = None
+    password: Optional[str] = None
+
+def normalize_query(q: str) -> str:
+    import re
+    return re.sub(r'[^a-z0-9 ]+', '', q.lower().strip())
+
+
 @app.post("/api/login", response_model=AuthResponse)
 def api_login(creds: Credentials):
     result = db_login(creds.email, creds.password)
@@ -46,32 +63,40 @@ def api_register(creds: Credentials):
     result = db_register_user(creds.email, creds.password)
     return AuthResponse(**result)
 
+@app.put("/api/user/{user_id}", response_model=AuthResponse)
+def update_user_endpoint(user_id: int, update: UserUpdate):
+    if update.email is not None and not is_valid_email(update.email):
+        return AuthResponse(success=False, error="Invalid email format.")
+    if update.password is not None and not is_strong_password(update.password):
+        return AuthResponse(
+            success=False,
+            error="Password must be at least 6 characters long, contain a number and an uppercase letter.",
+        )
+
+    success = update_user(user_id, update.email, update.password)
+    if not success:
+        return AuthResponse(success=False, error="Update failed.")
+    return AuthResponse(success=True, message="User updated successfully.", user_id=user_id, email=update.email)
+
 @app.get("/api/search", response_model=SearchResponse)
 def api_search(q: str):
     key = normalize_query(q)
-
-    # Call crawlers defensively so one retailer failure does not 500 the whole API.
-    try:
-        sains = get_sainsburys_results(q)
-    except Exception:
-        sains = []
-
-    try:
-        homeb = get_homebargains_results(q)
-    except Exception:
-        homeb = []
-
-    try:
-        morri = get_morrisons_results(q)
-    except Exception:
-        morri = []
+    results = search_all(q)
 
     return SearchResponse(
         query=q,
         key=key,
         results={
-            "sainsburys": sains,       # list of [name, price]
-            "homebargains": homeb,
-            "morrisons": morri,
+            "sainsburys":   results.get("sainsburys", []),
+            "homebargains": results.get("homebargains", []),
+            "morrisons":    results.get("morrisons", []),
         },
     )
+
+@app.post("/api/search-matches")
+def save_search_matches(payload: SearchMatchPayload):
+    if not payload.search_words:
+        return {"success": True, "saved": 0}
+
+    saved = insert_search_match(payload.user_id, payload.search_words)
+    return {"success": True, "saved": saved}

@@ -10,6 +10,7 @@ import time
 import ollama
 import json
 import re as _re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # https://www.sainsburys.co.uk/gol-ui/SearchResults/
 
@@ -17,9 +18,11 @@ import re as _re
 
 # https://groceries.morrisons.com/search?q=
 
-FORCE_LLM_FALLBACK = True
+FORCE_HEURISTIC_FALLBACK = False
+FORCE_LLM_HEURISTIC_BYPASS = False
 
-DEFAULT_MODEL = "qwen2.5:7b"
+#DEFAULT_MODEL = "qwen2.5:7b"
+DEFAULT_MODEL = "gemma4:e4b"
 FALLBACK_MODEL = "phi3:3.8b"
 
 # Tags that are pure noise — remove entirely including their children
@@ -74,8 +77,8 @@ def get_sainsburys_results(search_query):
 
     WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, "a.pt__link")))
 
-    if FORCE_LLM_FALLBACK:
-        print("[Sainsbury's] FORCE_LLM_FALLBACK enabled — skipping CSS extraction.")
+    if FORCE_HEURISTIC_FALLBACK:
+        print("[Sainsbury's] FORCE_HEURISTIC_FALLBACK enabled — skipping CSS extraction.")
         results = fallback_llm_search(driver.page_source, site='sainsburys')
         driver.quit()
         return results
@@ -142,8 +145,8 @@ def get_homebargains_results(search_query):
     driver.get(search_url)
     print(f"[Home Bargains] Page loaded. Title: {driver.title!r}  |  HTML size: {len(driver.page_source)} chars")
 
-    if FORCE_LLM_FALLBACK:
-        print("[Home Bargains] FORCE_LLM_FALLBACK enabled — skipping CSS extraction.")
+    if FORCE_HEURISTIC_FALLBACK:
+        print("[Home Bargains] FORCE_HEURISTIC_FALLBACK enabled — skipping CSS extraction.")
         results = fallback_llm_search(driver.page_source, site='homebargains')
         driver.quit()
         return results
@@ -220,8 +223,8 @@ def get_morrisons_results(search_query):
     driver.get(search_url)
     print(f"[Morrisons] Page loaded. Title: {driver.title!r}  |  HTML size: {len(driver.page_source)} chars")
 
-    if FORCE_LLM_FALLBACK:
-        print("[Morrisons] FORCE_LLM_FALLBACK enabled — skipping CSS extraction.")
+    if FORCE_HEURISTIC_FALLBACK:
+        print("[Morrisons] FORCE_HEURISTIC_FALLBACK enabled — skipping CSS extraction.")
         results = fallback_llm_search(driver.page_source, site='morrisons')
         driver.quit()
         return results
@@ -313,89 +316,99 @@ def html_to_product_dicts(soup: "BeautifulSoup", site: str = "unknown") -> list[
 
     results = []
 
-    if site == "sainsburys#":
-        print(f"[encode_for_llm] DEBUG: cleaned HTML preview:")
-        print("="*80)
-        print(str(soup)[:2000])
-        print("="*80)
-
+    if site == "sainsburys":
         BASE = "https://www.sainsburys.co.uk"
 
-        cards = soup.select("article[data-testid^='product-tile-']")
-        print(f"[html_to_product_dicts] Sainsburys tiles found: {len(cards)}")
+        cards = soup.select("article[data-testid]")
+        product_cards = [c for c in cards if c.get("data-testid","").startswith("product-tile-")]
+        print(f"[html_to_product_dicts] Sainsbury's: {len(cards)} article[data-testid] tags, "
+              f"{len(product_cards)} product-tile cards")
 
-        for card in cards:
+        # Debug: show a sample of data-testid values found so we can see what's there
+        all_testids = [t.get("data-testid","") for t in soup.find_all(attrs={"data-testid": True})]
+        tile_ids = [x for x in all_testids if "product" in x.lower() or "tile" in x.lower()]
+        print(f"[html_to_product_dicts] Sample data-testid values with 'product'/'tile': {tile_ids[:10]}")
 
+        for card in product_cards:
             name_el = card.select_one('[data-testid="product-tile-description"] a')
-
             price_el = (
                 card.select_one('[data-testid="contextual-price-text"]')
                 or card.select_one('[data-testid="pt-retail-price"]')
                 or card.select_one(".pt__cost--price")
             )
-
-            name = name_el.get_text(strip=True) if name_el else ""
+            name  = name_el.get_text(strip=True) if name_el else ""
             price = price_el.get_text(strip=True) if price_el else ""
-
-            href = ""
-            if name_el and name_el.has_attr("href"):
-                href = name_el["href"].strip()
-                if href and not href.startswith("http"):
-                    href = BASE + href
-
+            href  = name_el.get("href", "") if name_el else ""
+            if href and not href.startswith("http"):
+                href = BASE + href
             if name:
-                results.append({
-                    "name": name,
-                    "price": price,
-                    "href": href
-                })
-
-    elif site == "homebargains#":
-        BASE = "https://home.bargains"
-        for card in soup.select("li"):
-            name_el  = card.select_one(".item-name a") or card.select_one(".title")
-            price_el = card.select_one(".item-price") or card.select_one(".price")
-            a_el     = card.select_one("a[href]")
-            if not (name_el or price_el):
-                continue
-            name = name_el.get_text(strip=True) if name_el else ""
-            # Double price like "£3.99, £2.49" take the last price
-            raw_price = price_el.get_text(strip=True) if price_el else ""
-            prices = [p.strip() for p in raw_price.split(",") if p.strip()]
-            price = prices[-1] if prices else raw_price
-            raw_href = (a_el.get("href", "") if a_el else "")
-            href = (BASE + raw_href) if raw_href.startswith("/") else raw_href
-            if name or price:
                 results.append({"name": name, "price": price, "href": href})
 
-    elif site == "morrisons#":
-        BASE = "https://groceries.morrisons.com"
-        # Try data test selectors first (original site structure)
-        for card in soup.select("div[data-retailer-anchor]"):
-            if not card.get("data-retailer-anchor", "").startswith("fop"):
+    elif site == "homebargains":
+        BASE = "https://home.bargains"
+        cards = soup.select("li.ais-Hits-item")
+        print(f"[html_to_product_dicts] Home Bargains: {len(cards)} li.ais-Hits-item cards")
+        # Also check for Angular item-name structure
+        alt_cards = soup.select("li")
+        item_name_cards = [c for c in alt_cards if c.select_one(".item-name")]
+        print(f"[html_to_product_dicts] Home Bargains: {len(item_name_cards)} li with .item-name")
+
+        # Try ais-Hits-item first, then .item-name structure
+        search_cards = cards if cards else item_name_cards
+        for card in search_cards:
+            name_el  = (card.select_one(".item-name a")
+                        or card.select_one(".title")
+                        or card.select_one("a[href]"))
+            price_el = card.select_one(".item-price") or card.select_one(".price")
+            a_el     = card.select_one("a[href]")
+            if not (name_el and price_el):
                 continue
+            name = name_el.get_text(strip=True)
+            raw_price = price_el.get_text(strip=True)
+            prices = [p.strip() for p in raw_price.split(",") if p.strip()]
+            price = prices[-1] if prices else raw_price
+            raw_href = a_el.get("href", "") if a_el else ""
+            href = (BASE + raw_href) if raw_href.startswith("/") else raw_href
+            if name and price:
+                results.append({"name": name, "price": price, "href": href})
+
+    elif site == "morrisons":
+        BASE = "https://groceries.morrisons.com"
+        fop_cards = soup.select("div[data-retailer-anchor]")
+        product_fops = [c for c in fop_cards if c.get("data-retailer-anchor","").startswith("fop")]
+        print(f"[html_to_product_dicts] Morrisons: {len(fop_cards)} div[data-retailer-anchor], "
+              f"{len(product_fops)} fop cards")
+
+        # Debug: show sample retailer-anchor values
+        anchors = [c.get("data-retailer-anchor","") for c in fop_cards[:10]]
+        print(f"[html_to_product_dicts] Sample data-retailer-anchor values: {anchors}")
+
+        for card in product_fops:
             name_el  = card.select_one("h3[data-test='fop-title']")
             price_el = card.select_one("span[data-test='fop-price']")
             a_el     = card.select_one("a[href]")
             name  = name_el.get_text(strip=True) if name_el else ""
             price = price_el.get_text(strip=True) if price_el else ""
-            raw_href = (a_el.get("href", "") if a_el else "")
+            raw_href = a_el.get("href", "") if a_el else ""
             href = (BASE + raw_href) if raw_href.startswith("/") else raw_href
-            if name or price:
+            if name and price:
                 results.append({"name": name, "price": price, "href": href})
-        # If nothing found, try the Angular .item-name/.item-price structure
+
         if not results:
-            for card in soup.select("li"):
+            # Angular .item-name/.item-price fallback
+            item_cards = [li for li in soup.select("li") if li.select_one(".item-name")]
+            print(f"[html_to_product_dicts] Morrisons Angular fallback: {len(item_cards)} .item-name cards")
+            for card in item_cards:
                 name_el  = card.select_one(".item-name a")
                 price_el = card.select_one(".item-price")
                 a_el     = card.select_one("a[href]")
-                if not (name_el or price_el):
+                if not (name_el and price_el):
                     continue
-                name  = name_el.get_text(strip=True) if name_el else ""
-                price = price_el.get_text(strip=True) if price_el else ""
-                raw_href = (a_el.get("href", "") if a_el else "")
+                name  = name_el.get_text(strip=True)
+                price = price_el.get_text(strip=True)
+                raw_href = a_el.get("href", "") if a_el else ""
                 href = (BASE + raw_href) if raw_href.startswith("/") else raw_href
-                if name or price:
+                if name and price:
                     results.append({"name": name, "price": price, "href": href})
 
     if results:
@@ -404,19 +417,38 @@ def html_to_product_dicts(soup: "BeautifulSoup", site: str = "unknown") -> list[
 
     print(f"[html_to_product_dicts] No results from known selectors — trying generic scan...")
 
+    # Non-product patterns to skip
+    _NON_PRODUCT_TEXT = _re.compile(
+        r"^(skip to|choose now|shop now|shop the|see all|view all|sign in|log in|"
+        r"home delivery|my account|basket|checkout|back to top|meal deal|"
+        r"terms|privacy|cookie|newsletter|subscribe|follow us|save |was )",
+        _re.IGNORECASE,
+    )
+    _NON_PRODUCT_HREF = _re.compile(
+        r"(^#|#main|#footer|#search|/offers?/?$|/features/|utm_|"
+        r"/account|/basket|/checkout|/sign-?in|/help)",
+        _re.IGNORECASE,
+    )
+
     seen: dict[tuple, dict] = {}
     for a in soup.find_all("a", href=True):
+        href = a.get("href", "") or ""
+        if _NON_PRODUCT_HREF.search(href):
+            continue
         text = a.get_text(" ", strip=True)
-        if not text or len(text) < 3 or len(text) > 200:
+        if not text or len(text) < 5 or len(text) > 120:
+            continue
+        if _NON_PRODUCT_TEXT.match(text):
             continue
         parent = a.parent
-        search_text = (parent.get_text(" ", strip=True)[:300] if parent else text)
+        search_text = parent.get_text(" ", strip=True)[:300] if parent else text
         price_match = _PRICE_RE.search(search_text)
         if not price_match:
             continue
         price_str = price_match.group(0).strip()
-        name_str  = text.replace(price_str, "").strip()[:120] or text[:120]
-        href      = a.get("href", "") or ""
+        name_str = text.replace(price_str, "").strip()[:120] or text[:120]
+        if len(name_str) < 5:
+            continue
         key = (name_str[:60], price_str)
         if key not in seen:
             seen[key] = {"name": name_str, "price": price_str, "href": href}
@@ -457,13 +489,11 @@ def toon_encode(data: list[dict], delimiter: str = ",") -> str:
 
 def encode_for_llm(raw_html: str, site: str = "unknown") -> tuple[str, str, list[dict]]:
     """
-    Full compression pipeline:
-      raw HTML → clean soup → html_to_product_dicts(site) → toon_encode
-
-    Returns (payload, format_hint, products) where:
-      - products is non-empty if heuristic extraction succeeded (skip LLM)
-      - format_hint is "toon" or "html"
-      - payload is the compressed content for the LLM (only used if products is empty)
+    Pipeline:
+      1. Parse once, strip noise tags (keeps all attrs intact)
+      2. Unless FORCE_LLM_HEURISTIC_BYPASS, run heuristic with full attrs
+      3. If heuristic finds products → return directly (no LLM)
+      4. Otherwise strip attrs, send cleaned HTML to LLM
     """
     import time
     t0 = time.time()
@@ -471,27 +501,31 @@ def encode_for_llm(raw_html: str, site: str = "unknown") -> tuple[str, str, list
     print(f"[encode_for_llm] Starting pipeline — site={site!r}, input={len(raw_html):,} chars...")
     soup = BeautifulSoup(raw_html, "html.parser")
 
+    # Strip noise tags only — keep ALL attributes so selectors work
     for tag in soup.find_all(_STRIP_TAGS):
         tag.decompose()
+    print(f"[encode_for_llm] Noise tags removed in {time.time()-t0:.1f}s")
+
+    # Run heuristic while attrs are intact (unless bypassed for LLM testing)
+    if not FORCE_LLM_HEURISTIC_BYPASS:
+        products = html_to_product_dicts(soup, site=site)
+        if products:
+            toon = toon_encode(products)
+            print(f"[encode_for_llm] Heuristic found {len(products)} products — "
+                  f"returning directly ({len(toon):,} chars TOON, {time.time()-t0:.1f}s total)")
+            return toon, "toon", products
+    else:
+        print(f"[encode_for_llm] FORCE_LLM_HEURISTIC_BYPASS — skipping heuristic, going straight to LLM")
+
+    # Strip attrs now for the LLM payload
     for tag in soup.find_all(True):
         tag.attrs = {k: v for k, v in tag.attrs.items() if k in _KEEP_ATTRS}
 
-    print(f"[encode_for_llm] Soup cleaned in {time.time()-t0:.1f}s — extracting products...")
-
-    products = html_to_product_dicts(soup, site=site)
-
-    if products:
-        toon = toon_encode(products)
-        print(f"[encode_for_llm] Heuristic found {len(products)} products — "
-              f"skipping LLM, returning directly ({len(toon):,} chars TOON, {time.time()-t0:.1f}s total)")
-        return toon, "toon", products
-    else:
-        cleaned = str(soup)
-        cleaned = _re.sub(r"\n\s*\n+", "\n", cleaned)
-        cleaned = _re.sub(r"[ \t]{2,}", " ", cleaned)
-        print(f"[encode_for_llm] No heuristic results — sending cleaned HTML to LLM "
-              f"({len(cleaned):,} chars, {time.time()-t0:.1f}s)")
-        return cleaned, "html", []
+    cleaned = str(soup)
+    cleaned = _re.sub(r"\n\s*\n+", "\n", cleaned)
+    cleaned = _re.sub(r"[ \t]{2,}", " ", cleaned)
+    print(f"[encode_for_llm] Sending cleaned HTML to LLM ({len(cleaned):,} chars, {time.time()-t0:.1f}s)")
+    return cleaned, "html", []
 
 def fallback_llm_search(raw_html: str, model: str = DEFAULT_MODEL, site: str = "unknown") -> list[list[str]]:
     """
@@ -563,35 +597,54 @@ DATA:
 """
  
     def call_model(m: str) -> list[list[str]]:
+        import traceback
         print(f"\n[LLM] Sending prompt to {m}...")
         print(f"[LLM] Format: {fmt.upper()}  |  Payload: {len(payload):,} chars  |  Prompt: {len(prompt):,} chars")
         print("-" * 60)
 
+        # Single non-streaming call — simpler and avoids chunk assembly bugs
         response = ollama.chat(
             model=m,
             messages=[{"role": "user", "content": prompt}],
+            stream=False,
         )
         raw = response["message"]["content"].strip()
 
-        print(f"[LLM] Raw response from {m}:")
+        print(f"[LLM] Raw response from {m} ({len(raw):,} chars):")
         print("=" * 60)
-        print(raw)
+        print(raw[:2000])  # cap console spam but always show start
+        if len(raw) > 2000:
+            print(f"... [{len(raw)-2000:,} more chars]")
         print("=" * 60)
 
-        # Strip accidental markdown fences
-        if raw.startswith("```"):
+        if not raw:
+            raise ValueError("LLM returned an empty response")
+
+        # Strip accidental markdown fences — handle ```json ... ``` or ``` ... ```
+        clean = raw
+        if clean.startswith("```"):
             print("[LLM] Stripping markdown fences...")
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-            raw = raw.strip()
-            print("[LLM] Cleaned response:")
-            print(raw)
+            clean = _re.sub(r"^```[a-zA-Z]*\n?", "", clean)
+            clean = _re.sub(r"\n?```$", "", clean).strip()
+            print(f"[LLM] After fence strip: {clean[:200]}")
+
+        # Extract the JSON array even if the model prepended/appended prose
+        bracket_start = clean.find("[")
+        bracket_end   = clean.rfind("]")
+        if bracket_start != -1 and bracket_end != -1 and bracket_end > bracket_start:
+            if bracket_start > 0 or bracket_end < len(clean) - 1:
+                print(f"[LLM] Extracting JSON array from pos {bracket_start}:{bracket_end+1}")
+            clean = clean[bracket_start : bracket_end + 1]
 
         print("[LLM] Parsing JSON...")
-        parsed = json.loads(raw)
-        print(f"[LLM] JSON parsed OK — {len(parsed)} items found.")
+        try:
+            parsed = json.loads(clean)
+        except json.JSONDecodeError as e:
+            print(f"[LLM] JSON parse error: {e}")
+            print(f"[LLM] Offending text around error:\n{clean[max(0,e.pos-100):e.pos+100]}")
+            raise
 
+        print(f"[LLM] JSON parsed OK — {len(parsed)} items found.")
         results = [
             [item.get("name", ""), item.get("price", ""), item.get("href", "")]
             for item in parsed
@@ -613,7 +666,40 @@ DATA:
             else:
                 print(f"[LLM fallback] {attempt_model} returned no results — trying next model.")
         except Exception as e:
-            print(f"[LLM fallback] ✗ {attempt_model} failed with error: {e}")
+            import traceback
+            print(f"[LLM fallback] ✗ {attempt_model} failed: {e}")
+            traceback.print_exc()
 
     print("[LLM fallback] All models failed. Returning empty list.")
     return []
+
+def search_all(query, on_result=None):
+    """
+    Run all three crawlers concurrently.
+
+    on_result: optional callback(store_name, results) fired as each store
+               finishes — use this so your display page can render results
+               immediately instead of waiting for all three to complete.
+    """
+    crawlers = {
+        "sainsburys":   lambda: get_sainsburys_results(query),
+        "homebargains": lambda: get_homebargains_results(query),
+        "morrisons":    lambda: get_morrisons_results(query),
+    }
+    results = {}
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {executor.submit(fn): name for name, fn in crawlers.items()}
+        for future in as_completed(futures):   # fires as each store finishes, not all at once
+            name = futures[future]
+            try:
+                store_results = future.result()
+            except Exception as e:
+                import traceback
+                print(f"[search_all] {name} failed: {e}")
+                traceback.print_exc()
+                store_results = []
+            results[name] = store_results
+            print(f"[search_all] ✓ {name} done — {len(store_results)} products")
+            if on_result is not None:
+                on_result(name, store_results)  # display page gets this store NOW
+    return results

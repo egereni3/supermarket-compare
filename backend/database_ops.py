@@ -3,33 +3,6 @@ import pymysql
 import bcrypt
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr
-
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:4200"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-class Credentials(BaseModel):
-    email: EmailStr
-    password: str
-
-class AuthResponse(BaseModel):
-    success: bool
-    message: Optional[str] = None
-    error: Optional[str] = None
-    user_id: Optional[int] = None
-    email: Optional[EmailStr] = None
-
-# Helper functions
 
 def is_valid_email(email: str) -> bool:
     pattern = r"^[\w\.-]+@[\w\.-]+\.\w+$"
@@ -63,7 +36,6 @@ def get_db_connection():
     )
 
 # User Operations
-
 
 def insert_user(email: str, password: str):
     hashed_password = hash_password(password)
@@ -189,11 +161,25 @@ def delete_avatar(avatar_id: int):
 
     return True
 
+def insert_search_match(user_id: int, search_words: list[str]) -> int:
+    query = """
+        INSERT IGNORE INTO searches (user_id, search_word)
+        VALUES (%s, %s)
+    """
+    rows = [(user_id, word.lower().strip()) for word in search_words]
+
+    with get_db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.executemany(query, rows)
+        connection.commit()
+        saved = cursor.rowcount
+
+    return saved
 
 def _login_logic(email: str, password: str) -> dict:
     if not is_valid_email(email):
         return {"success": False, "error": "Invalid email format."}
-    
+
     if not is_strong_password(password):
         return {
             "success": False,
@@ -249,40 +235,3 @@ def _register_logic(email: str, password: str) -> dict:
         "message": "User registered successfully.",
         "user_id": user_id,
     }
-
-# FastAPI endpoints
-
-
-@app.post("/api/login", response_model=AuthResponse)
-def login(credentials: Credentials):
-    result = _login_logic(credentials.email, credentials.password)
-    if not result["success"]:
-        return AuthResponse(**result)
-    return AuthResponse(**result)
-
-@app.post("/api/register", response_model=AuthResponse)
-def register_user(credentials: Credentials):
-    result = _register_logic(credentials.email, credentials.password)
-    return AuthResponse(**result)
-
-
-class UserUpdate(BaseModel):
-    email: Optional[EmailStr] = None
-    password: Optional[str] = None
-
-
-@app.put("/api/user/{user_id}", response_model=AuthResponse)
-def update_user_endpoint(user_id: int, update: UserUpdate):
-    # Validate inputs
-    if update.email is not None and not is_valid_email(update.email):
-        return AuthResponse(success=False, error="Invalid email format.")
-    if update.password is not None and not is_strong_password(update.password):
-        return AuthResponse(
-            success=False,
-            error="Password must be at least 6 characters long, contain a number and an uppercase letter.",
-        )
-
-    success = update_user(user_id, update.email, update.password)
-    if not success:
-        return AuthResponse(success=False, error="Update failed.")
-    return AuthResponse(success=True, message="User updated successfully.", user_id=user_id, email=update.email)
