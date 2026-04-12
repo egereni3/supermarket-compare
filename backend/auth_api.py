@@ -12,6 +12,7 @@ from .database_ops import (
     is_valid_email,
     is_strong_password,
     insert_search_match,
+    get_top_search_words,
 )
 
 app = FastAPI()
@@ -100,3 +101,8 @@ def save_search_matches(payload: SearchMatchPayload):
 
     saved = insert_search_match(payload.user_id, payload.search_words)
     return {"success": True, "saved": saved}
+
+@app.get("/api/user/{user_id}/top-searches")
+def get_top_searches(user_id: int, limit: int = 5):
+    words = get_top_search_words(user_id, limit)
+    return {"words": words}

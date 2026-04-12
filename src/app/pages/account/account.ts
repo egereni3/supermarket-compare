@@ -198,6 +198,7 @@ export class Account {
 
     try {
       const items = await firstValueFrom(this.items$);
+      await this.saveMatchedSearchWords(items);
       const uniqueMarkets = this.getUniqueMarkets(items);
 
       if (!uniqueMarkets.length) {
@@ -500,6 +501,41 @@ export class Account {
         .catch((error) => reject(error))
         .finally(() => window.clearTimeout(timeoutId));
     });
+  }
+
+  private async saveMatchedSearchWords(items: BasketItem[]): Promise<void> {
+    const raw = localStorage.getItem('searchCache_v2');
+    console.log('[search-match] raw cache:', raw);
+    if (!raw) return;
+
+    const cache: Record<string, { query: string; key: string; results: any }> = JSON.parse(raw);
+    const searchWords = Object.keys(cache);
+    console.log('[search-match] searchWords:', searchWords);
+
+    const itemTitles = items.map(i => i.title.toLowerCase());
+    console.log('[search-match] itemTitles:', itemTitles);
+
+    const matched = searchWords.filter(word =>
+      itemTitles.some(title => title.includes(word.toLowerCase()))
+    );
+    console.log('[search-match] matched:', matched);
+
+    if (!matched.length) return;
+
+    const userId = this.auth.getUser()?.id;
+    console.log('[search-match] userId:', userId);
+    if (!userId) return;
+
+    try {
+      const res = await fetch('http://localhost:8000/api/search-matches', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, search_words: matched }),
+      });
+      console.log('[search-match] response status:', res.status, await res.json());
+    } catch (e) {
+      console.warn('[search-match] fetch error:', e);
+    }
   }
 
 }

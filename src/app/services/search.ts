@@ -24,7 +24,7 @@ export interface CrawlerItem {
   quantity: number;
 }
 
-export type SearchResponse = SearchResultPayload; 
+export type SearchResponse = SearchResultPayload;
 
 type SearchCache = Record<string, SearchResultPayload>;
 
@@ -52,22 +52,10 @@ export class Search {
   }
 
   private writeCache(cache: SearchCache): void {
-    const payloads = Object.values(cache);
-
-    const allStoresHaveResults = payloads.every(payload =>
-      Object.values(payload.results ?? {}).every(
-        (storeResults: any[]) => Array.isArray(storeResults) && storeResults.length > 0
-      )
-    );
-
-    console.log("writeCache called", payloads);
-
-    if (!allStoresHaveResults) return;
-
     try {
       localStorage.setItem(SEARCH_CACHE_KEY, JSON.stringify(cache));
     } catch {
-      // ignore
+      // ignore quota errors
     }
   }
 
@@ -95,14 +83,33 @@ export class Search {
       })
       .pipe(
         tap((resp) => {
-          const updated: SearchCache = {
-            ...cache,
-            [resp.key]: resp,
-          };
-          this.writeCache(updated);
           this.lastResult = resp;
+          this.writeCache({ ...cache, [resp.key]: resp });
         }),
       );
+  }
+
+  prefetchTopSearches(userId: number): void {
+    this.http
+      .get<{ words: string[] }>(`http://localhost:8000/api/user/${userId}/top-searches`)
+      .subscribe({
+        next: ({ words }) => {
+          if (!words.length) return;
+
+          const cache = this.readCache();
+
+          const missing = words.filter((w) => !cache[normalizeQuery(w)]);
+          if (!missing.length) return;
+
+          missing.forEach((word, index) => {
+            setTimeout(() => {
+              this.search(word).subscribe();
+            }, index * 2000);
+          });
+        },
+        error: () => {
+        },
+      });
   }
 
   getLastResult(): SearchResultPayload | null {

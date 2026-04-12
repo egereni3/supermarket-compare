@@ -20,8 +20,13 @@ export class Home {
   constructor(
     private search: Search,
     private router: Router,
-    private auth: Auth,    
-  ) {}
+    private auth: Auth,
+  ) {
+    const user = this.auth.getUser();
+    if (user?.id) {
+      this.search.prefetchTopSearches(user.id);
+    }
+  }
 
   get isLoggedIn(): boolean {
     return this.auth.isLoggedIn();

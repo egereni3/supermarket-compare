@@ -5,7 +5,7 @@ import { Search, SearchResultPayload, ItemRow } from '../../services/search';
 import { Auth } from '../../auth/auth';
 import { FormsModule } from '@angular/forms';
 import { Basket, BasketItem } from '../../services/basket';
-import { Observable } from 'rxjs';
+import { Observable, switchMap, of } from 'rxjs';
 
 @Component({
   selector: 'app-results',
@@ -38,12 +38,9 @@ export class Results implements OnInit {
     private search: Search,
     private basket: Basket,
     private auth: Auth,
-    private router: Router
-    
+    private router: Router,
   ) {
     this.items$ = this.basket.items$;
-    const user = this.auth.getUser();
-
   }
 
   ngOnInit(): void {
@@ -52,32 +49,46 @@ export class Results implements OnInit {
       return;
     }
 
-    this.route.queryParams.subscribe((params) => {
-      const q = params['q'] ?? '';
-      this.query = q;
+    // switchMap cancels any in-flight request when the query changes.
+    // This also correctly handles the case where the component is reused
+    // (already on /results) — ngOnInit won't re-run but queryParams will emit.
+    this.route.queryParams.pipe(
+      switchMap((params) => {
+        const q = (params['q'] ?? '').trim();
+        this.query = q;
+        this.results = null;
+        this.error = null;
 
-      const cached = this.search.getLastResult();
-      if (cached && cached.query === q) {
-        this.results = cached.results;
-        this.initializeQuantities();
+        if (!q) {
+          this.loading = false;
+          return of(null);
+        }
 
-        return;
-      }
-
-      if (q) {
         this.loading = true;
-        this.search.search(q).subscribe({
-          next: (resp: SearchResultPayload) => {
-            this.loading = false;
-            this.results = resp.results;
-            this.initializeQuantities();
-          },
-          error: () => {
-            this.loading = false;
-          },
-        });
-      }
+        return this.search.search(q);
+      })
+    ).subscribe({
+      next: (resp) => {
+        if (resp === null) return;
+        this.loading = false;
+        this.results = resp.results;
+        this.initializeQuantities();
+      },
+      error: () => {
+        this.loading = false;
+        this.error = 'Search failed. Please try again.';
+      },
     });
+  }
+
+  onSearch(): void {
+    this.error = null;
+    const trimmed = this.query.trim();
+    if (!trimmed) {
+      this.error = 'Please enter a query.';
+      return;
+    }
+    this.router.navigate(['/results'], { queryParams: { q: trimmed } });
   }
 
   max1(value: number): number {
@@ -108,40 +119,24 @@ export class Results implements OnInit {
 
   addToBasket(item: ItemRow, market: string, quantity: number): void {
     const [title, priceStr] = item;
-
     let unitPrice = 0;
     const normalized = priceStr.trim().toLowerCase();
-
     if (normalized.endsWith('p')) {
-      const pence = parseFloat(normalized.replace(/[^0-9.]/g, ''));
-      unitPrice = pence / 100;
+      unitPrice = parseFloat(normalized.replace(/[^0-9.]/g, '')) / 100;
     } else {
       unitPrice = parseFloat(normalized.replace(/[^0-9.]/g, '')) || 0;
     }
-
-    const basketItem = {
-      title,
-      unitPrice,
-      market,
-      quantity,
-    };
-
-    this.basket.add(basketItem, quantity); 
+    this.basket.add({ title, unitPrice, market, quantity }, quantity);
   }
 
   onAddClick(item: ItemRow, market: string, index: number): void {
     const key = this.getItemKey(item, market, index);
-
     const quantity = Math.max(1, this.quantities[market]?.[index] ?? 1);
-
     const triggerAnimation = () => {
       this.animatingKeys.add(key);
-
       this.addToBasket(item, market, quantity);
-
       setTimeout(() => this.animatingKeys.delete(key), 600);
     };
-
     if (this.animatingKeys.has(key)) {
       this.animatingKeys.delete(key);
       setTimeout(triggerAnimation, 20);
@@ -154,36 +149,8 @@ export class Results implements OnInit {
     return this.animatingKeys.has(this.getItemKey(item, market, index));
   }
 
-    get isLoggedIn(): boolean {
+  get isLoggedIn(): boolean {
     return this.auth.isLoggedIn();
-  }
-
-  onSearch(): void {
-    this.error = null;
-    const trimmed = this.query.trim();
-    if (!trimmed) {
-      this.error = 'Please enter a query.';
-      return;
-    }
-
-    this.loading = true;
-    this.search.search(trimmed).subscribe({
-      next: (resp: SearchResultPayload) => {
-        this.loading = false;
-        this.results = resp.results;
-        this.initializeQuantities();
-
-        if (this.query !== trimmed) {
-          this.router.navigate(['/results'], { queryParams: { q: trimmed } });
-        } else {
-          this.query = trimmed;
-        }
-      },
-      error: () => {
-        this.loading = false;
-        this.error = 'Search failed. Please try again.';
-      },
-    });
   }
 
   remove(id: string): void {
@@ -194,28 +161,22 @@ export class Results implements OnInit {
     this.basket.clear();
   }
 
-    increaseQuantity(item: BasketItem) {
+  increaseQuantity(item: BasketItem) {
     this.updateQuantity(item, item.quantity + 1);
   }
 
   decreaseQuantity(item: BasketItem) {
-    if (item.quantity > 1) {
-      this.updateQuantity(item, item.quantity - 1);
-    }
+    if (item.quantity > 1) this.updateQuantity(item, item.quantity - 1);
   }
 
   onQuantityInputChange(item: BasketItem, value: string | number) {
     let qty = Number(value);
-    if (isNaN(qty) || qty < 1) {
-      qty = 1;
-    }
-
+    if (isNaN(qty) || qty < 1) qty = 1;
     this.updateQuantity(item, qty);
   }
 
   updateQuantity(item: BasketItem, quantity: number) {
     if (quantity < 1) quantity = 1;
-
     this.basket.updateQuantity(item.id, quantity);
   }
 

@@ -176,6 +176,26 @@ def insert_search_match(user_id: int, search_words: list[str]) -> int:
 
     return saved
 
+def get_top_search_words(user_id: int, limit: int = 5) -> list[str]:
+    """
+    Return the user's most frequently matched search words,
+    ordered by how many times they've appeared across past basket trips.
+    """
+    query = """
+        SELECT search_word, COUNT(*) AS frequency
+        FROM searches
+        WHERE user_id = %s
+        GROUP BY search_word
+        ORDER BY frequency DESC
+        LIMIT %s
+    """
+    with get_db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(query, (user_id, limit))
+            rows = cursor.fetchall()
+ 
+    return [row["search_word"] for row in rows]
+
 def _login_logic(email: str, password: str) -> dict:
     if not is_valid_email(email):
         return {"success": False, "error": "Invalid email format."}
